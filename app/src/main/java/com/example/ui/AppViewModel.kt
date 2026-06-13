@@ -109,6 +109,19 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     // All registered users except "me" for Find Friends
     val allFriends: StateFlow<List<UserEntity>> = userDao.getAllFriendsFlow()
+        .combine(currentUserFlow) { friends, me ->
+            if (me == null) {
+                friends
+            } else {
+                val myEmail = me.email.lowercase().trim()
+                val myUsername = me.username.lowercase().trim().removePrefix("@")
+                friends.filter { friend ->
+                    val friendEmail = friend.email.lowercase().trim()
+                    val friendUsername = friend.username.lowercase().trim().removePrefix("@")
+                    friendEmail != myEmail && friendUsername != myUsername
+                }
+            }
+        }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Active Mission Flow
@@ -263,6 +276,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
         }
+        if (cleanUrl.contains("azurewebsite.net") && !cleanUrl.contains("azurewebsites.net")) {
+            cleanUrl = cleanUrl.replace("azurewebsite.net", "azurewebsites.net")
+        }
         ApiClient.updateBaseUrl(cleanUrl)
         _backendBaseUrl.value = ApiClient.getBaseUrl()
         sharedPrefs.edit().putString("backend_url", ApiClient.getBaseUrl()).apply()
@@ -326,10 +342,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         // Load persistent backend URL if set
         val persistedUrl = sharedPrefs.getString("backend_url", null)
         if (!persistedUrl.isNullOrBlank()) {
-            ApiClient.updateBaseUrl(persistedUrl)
+            val correctedUrl = if (persistedUrl.contains("azurewebsite.net") && !persistedUrl.contains("azurewebsites.net")) {
+                persistedUrl.replace("azurewebsite.net", "azurewebsites.net")
+            } else {
+                persistedUrl
+            }
+            ApiClient.updateBaseUrl(correctedUrl)
             _backendBaseUrl.value = ApiClient.getBaseUrl()
+            sharedPrefs.edit().putString("backend_url", ApiClient.getBaseUrl()).apply()
         } else {
-            ApiClient.updateBaseUrl("https://aedc-2409-40e3-1ec-5736-dd2c-78a1-d1e7-e712.ngrok-free.app/")
+            ApiClient.updateBaseUrl("https://one-earth-dadyagc7bcc9hpcb.eastasia-01.azurewebsites.net/")
             _backendBaseUrl.value = ApiClient.getBaseUrl()
         }
         // Prepopulate database with rich data for demonstration
@@ -578,12 +600,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 // 3. Sync All Users from Cloud to Local Friends List
                 try {
                     val remoteUsers = ApiClient.getService().getAllUsers()
-                    android.util.Log.d("AppDbTrace", "Fetched remoteUsers from network. Size: ${remoteUsers.size}")
                     userDao.deleteAllNonMeUsers()
                     if (remoteUsers.isNotEmpty()) {
-                        var insertedCount = 0
                         remoteUsers.forEach { user ->
-                            android.util.Log.d("AppDbTrace", "Processing user: name=${user.name}, email=${user.email}, username=${user.username}")
                             // Skip local logged-in user profile to prevent self duplicates
                             val matchesMe = me != null && (
                                 user.email.lowercase().trim() == me.email.lowercase().trim() ||
@@ -595,17 +614,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                                     id = user.email.lowercase().trim()
                                 )
                                 userDao.insertUser(friendEntity)
-                                insertedCount++
-                                android.util.Log.d("AppDbTrace", "Successfully inserted friend into Room: ${friendEntity.id}")
-                            } else {
-                                android.util.Log.d("AppDbTrace", "Skipped friend insert. MatchesMe=$matchesMe, BlankEmail=${user.email.isBlank()}")
                             }
                         }
-                        android.util.Log.d("AppDbTrace", "Total remote users processed. Inserted: $insertedCount, Ignored: ${remoteUsers.size - insertedCount}")
                     }
                 } catch (userEx: Exception) {
                     android.util.Log.e("AppViewModel", "Sync Users Error: ${userEx.message}", userEx)
-                    android.util.Log.e("AppDbTrace", "Failed to fetch/sync users of One Earth", userEx)
                 }
             } catch (e: Exception) {
                 // Fail-safe
@@ -732,9 +745,31 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 isWaiting = !makeActive
             )
             
-            val newRoomId = chatDao.insertRoom(newRoom).toInt()
+            var finalRoomId = 0
+            var remoteRoomCreated: ChatRoomEntity? = null
+            
+            // Sync with backend FIRST if connected to obtain the proper server sequential ID
+            if (_isBackendConnected.value) {
+                try {
+                    val remoteRoom = ApiClient.getService().createChatRoom(newRoom.copy(id = 0))
+                    finalRoomId = remoteRoom.id
+                    remoteRoomCreated = remoteRoom
+                } catch (e: Exception) {
+                    android.util.Log.e("AppViewModel", "Failed to create remote room synchronically: ${e.message}", e)
+                }
+            }
+            
+            // Fallback to local auto-increment ID if backend creation failed or is offline
+            if (finalRoomId <= 0) {
+                finalRoomId = chatDao.insertRoom(newRoom).toInt()
+            } else {
+                remoteRoomCreated?.let {
+                    chatDao.insertRoom(it.copy(isActive = makeActive, isWaiting = !makeActive))
+                }
+            }
+            
             val seedMessage = ChatMessageEntity(
-                roomId = newRoomId,
+                roomId = finalRoomId,
                 senderId = "other",
                 senderName = user.name,
                 messageText = "Greetings. I am honored to synchronize minds with you.",
@@ -743,7 +778,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             )
             chatDao.insertMessage(seedMessage)
             
-            _selectedRoomId.value = newRoomId
+            _selectedRoomId.value = finalRoomId
             _currentTab.value = DashboardTab.Messaging
             closeProfileDialog()
             
@@ -753,11 +788,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 _toastMessage.emit("${user.name} queued. Terminal capacity at limit (Max 3). Swap connections in Messaging tab!")
             }
 
-            // Sync with backend
-            if (_isBackendConnected.value) {
+            // Dispatch seed message to backend
+            if (_isBackendConnected.value && finalRoomId > 0) {
                 try {
-                    val remoteRoom = ApiClient.getService().createChatRoom(newRoom.copy(id = newRoomId))
-                    ApiClient.getService().sendChatMessage(remoteRoom.id, seedMessage)
+                    ApiClient.getService().sendChatMessage(finalRoomId, seedMessage)
                 } catch (e: Exception) {
                     // Fail-safe
                 }

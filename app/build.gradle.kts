@@ -8,12 +8,12 @@ plugins {
 
 android {
   namespace = "com.example"
-  compileSdk = 36
+  compileSdk { version = release(36) { minorApiLevel = 1 } }
 
   defaultConfig {
     applicationId = "com.aistudio.oneearth.nzrmpq"
     minSdk = 24
-    targetSdk = 35
+    targetSdk = 36
     versionCode = 2
     versionName = "1.0.1"
 

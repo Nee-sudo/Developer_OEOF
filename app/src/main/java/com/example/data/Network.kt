@@ -94,7 +94,7 @@ interface OneEarthApiService {
 
 object ApiClient {
     var authToken: String? = null
-    private var currentUrl = "https://aedc-2409-40e3-1ec-5736-dd2c-78a1-d1e7-e712.ngrok-free.app/" // User's ngrok backend
+    private var currentUrl = "https://one-earth-dadyagc7bcc9hpcb.eastasia-01.azurewebsites.net/" // Live cloud development backend
     private var retrofit: Retrofit? = null
     private var itemService: OneEarthApiService? = null
 

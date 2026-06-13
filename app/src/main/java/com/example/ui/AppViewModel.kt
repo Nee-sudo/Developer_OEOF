@@ -556,14 +556,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         val reg = ApiClient.getService().registerUser(me)
                         if (!reg.token.isNullOrBlank()) {
                             ApiClient.authToken = reg.token
-                            saveUserAndRecalculateRank(reg.copy(id = "me"))
+                            saveUserAndRecalculateRank(reg.toEntity("me").copy(id = "me"))
                         }
                     } catch (e: Exception) {
                         try {
                             val upd = ApiClient.getService().updateUserProfile(me.email.lowercase().trim(), me)
                             if (!upd.token.isNullOrBlank()) {
                                 ApiClient.authToken = upd.token
-                                saveUserAndRecalculateRank(upd.copy(id = "me"))
+                                saveUserAndRecalculateRank(upd.toEntity("me").copy(id = "me"))
                             }
                         } catch (updateEx: Exception) {
                             // Safe fallback
@@ -602,7 +602,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     val remoteUsers = ApiClient.getService().getAllUsers()
                     userDao.deleteAllNonMeUsers()
                     if (remoteUsers.isNotEmpty()) {
-                        remoteUsers.forEach { user ->
+                        remoteUsers.forEach { userDto ->
+                            val user = userDto.toEntity(userDto.email ?: "")
                             // Skip local logged-in user profile to prevent self duplicates
                             val matchesMe = me != null && (
                                 user.email.lowercase().trim() == me.email.lowercase().trim() ||
@@ -837,11 +838,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             // Try real server login first if backend is active
             if (_isBackendConnected.value) {
                 try {
-                    val remoteUser = ApiClient.getService().loginUser(LoginRequest(lowercaseId, passphraseInput))
-                    ApiClient.authToken = remoteUser.token
+                    val remoteUserDto = ApiClient.getService().loginUser(LoginRequest(lowercaseId, passphraseInput))
+                    val remoteUser = remoteUserDto.toEntity(lowercaseId)
+                    ApiClient.authToken = remoteUserDto.token
                     val clonedMe = remoteUser.copy(id = "me")
                     saveUserAndRecalculateRank(clonedMe)
-                    userDao.insertUser(remoteUser.copy(id = remoteUser.email.lowercase()))
+                    userDao.insertUser(remoteUser.copy(id = remoteUser.email.lowercase().trim()))
                     _toastMessage.emit("Welcome Back (Sync Active), ${remoteUser.name}!")
                     _currentScreen.value = Screen.MainDashboard
                     onResult(true)
@@ -1114,16 +1116,18 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
             // Try real server registration (attempt directly to ensure real-time storage)
             try {
-                val registeredUser = ApiClient.getService().registerUser(user)
-                ApiClient.authToken = registeredUser.token
+                val registeredUserDto = ApiClient.getService().registerUser(user)
+                val registeredUser = registeredUserDto.toEntity("me")
+                ApiClient.authToken = registeredUserDto.token
                 saveUserAndRecalculateRank(registeredUser.copy(id = "me"))
                 _isBackendConnected.value = true
                 _toastMessage.emit("Security Passport registered online.")
             } catch (e: Exception) {
                 // If register fails because user already exists on the server, try to update their profile
                 try {
-                    val updatedProfile = ApiClient.getService().updateUserProfile(user.email.lowercase().trim(), user)
-                    ApiClient.authToken = updatedProfile.token ?: ApiClient.authToken
+                    val updatedProfileDto = ApiClient.getService().updateUserProfile(user.email.lowercase().trim(), user)
+                    val updatedProfile = updatedProfileDto.toEntity("me")
+                    ApiClient.authToken = updatedProfileDto.token ?: ApiClient.authToken
                     saveUserAndRecalculateRank(updatedProfile.copy(id = "me"))
                     _isBackendConnected.value = true
                     _toastMessage.emit("Security Passport updated online.")
@@ -1614,8 +1618,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             // Validation requirements: must maintain Verified status & high-tier marks
             if (_isBackendConnected.value && me.email.isNotBlank()) {
                 try {
-                    val serverProfile = ApiClient.getService().getUserProfile(me.email.lowercase().trim())
-                    me = serverProfile.copy(id = "me")
+                    val serverProfileDto = ApiClient.getService().getUserProfile(me.email.lowercase().trim())
+                    me = serverProfileDto.toEntity("me").copy(id = "me")
                     userDao.insertUser(me)
                 } catch (e: Exception) {
                     // Safe fallback

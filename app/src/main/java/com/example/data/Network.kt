@@ -19,6 +19,108 @@ data class LoginRequest(val identifier: String, val passphrase: String)
 
 data class ReactionRequest(val userId: String, val reactionType: String)
 
+data class UserDto(
+    @com.squareup.moshi.Json(name = "_id") val mongoId: String? = null,
+    val id: Any? = null,
+    val userId: Any? = null,
+    val name: String? = null,
+    val username: String? = null,
+    val email: String? = null,
+    val dob: String? = null,
+    val territory: String? = null,
+    val flagEmoji: String? = null,
+    val territory_flag: String? = null,
+    val gender: String? = null,
+    val currentRank: String? = null,
+    val rank: String? = null,
+    val knowledgeCredits: Int? = null,
+    val knowledge_credits: Int? = null,
+    val contributionCredits: Int? = null,
+    val contribution_credits: Int? = null,
+    val reputationScore: Int? = null,
+    val reputation: Int? = null,
+    val personalityTraits: String? = null,
+    val traits: String? = null,
+    val bio: String? = null,
+    val followers: Int? = null,
+    val following: Int? = null,
+    val onboardingCompleted: Boolean? = null,
+    val citizenOathAccepted: Boolean? = null,
+    val isCandidate: Boolean? = null,
+    val campaignManifesto: String? = null,
+    val campaignVision: String? = null,
+    val votesCount: Int? = null,
+    val hasVoted: Boolean? = null,
+    val profilePhoto: String? = null,
+    val passphrase: String? = null,
+    val passwordHash: String? = null,
+    val password_hash: String? = null,
+    val token: String? = null
+) {
+    fun toEntity(defaultId: String = ""): UserEntity {
+        val idStr = anyToString(id)
+        val userIdStr = anyToString(userId)
+        
+        // Resolve primary identifier fallback (using email/mongoId whenever 'id' is empty or 'me')
+        val finalDocKey = if (!mongoId.isNullOrBlank()) mongoId 
+            else if (!idStr.isNullOrBlank() && idStr != "me") idStr 
+            else if (!userIdStr.isNullOrBlank() && userIdStr != "me") userIdStr 
+            else defaultId
+            
+        val safeEmail = if (!email.isNullOrBlank()) email else (if (finalDocKey.contains("@")) finalDocKey else "")
+        val safeId = if (finalDocKey == "me" && safeEmail.isNotBlank()) safeEmail else finalDocKey
+        val fallbackName = if (safeEmail.isNotBlank()) safeEmail.split("@")[0].replaceFirstChar { it.uppercase() } else "Unspecified Citizen"
+
+        val kb = knowledgeCredits ?: knowledge_credits ?: 0
+        val cb = contributionCredits ?: contribution_credits ?: 0
+        val resolvedRank = currentRank ?: rank ?: "Citizen"
+        val score = reputationScore ?: reputation ?: 98
+        val resolvedTraits = personalityTraits ?: traits ?: "Citizen"
+        val resolvedPass = passphrase ?: passwordHash ?: password_hash ?: "1234"
+        val resolvedFlag = flagEmoji ?: territory_flag ?: "🌍"
+        
+        return UserEntity(
+            id = safeId,
+            name = if (!name.isNullOrBlank()) name else fallbackName,
+            username = if (!username.isNullOrBlank()) username else (if (safeEmail.isNotBlank()) "@" + safeEmail.split("@")[0] else "@citizen"),
+            email = safeEmail,
+            dob = dob ?: "1995-01-01",
+            territory = territory ?: "Global",
+            flagEmoji = resolvedFlag,
+            gender = gender ?: "Male",
+            currentRank = resolvedRank,
+            knowledgeCredits = kb,
+            contributionCredits = cb,
+            reputationScore = score,
+            personalityTraits = resolvedTraits,
+            bio = bio ?: "Honorable citizen of the digital Empire. Committed to service and knowledge.",
+            followers = followers ?: 120,
+            following = following ?: 95,
+            onboardingCompleted = onboardingCompleted ?: false,
+            citizenOathAccepted = citizenOathAccepted ?: false,
+            isCandidate = isCandidate ?: false,
+            campaignManifesto = campaignManifesto ?: "",
+            campaignVision = campaignVision ?: "",
+            votesCount = votesCount ?: 0,
+            hasVoted = hasVoted ?: false,
+            profilePhoto = profilePhoto ?: "",
+            passphrase = resolvedPass,
+            token = token
+        )
+    }
+
+    private fun anyToString(value: Any?): String? {
+        if (value == null) return null
+        if (value is Double) {
+            if (value % 1 == 0.0) {
+                return value.toLong().toString()
+            }
+            return value.toString()
+        }
+        return value.toString()
+    }
+}
+
 // ==========================================
 // RETROFIT API INTERFACE
 // ==========================================
@@ -30,20 +132,21 @@ interface OneEarthApiService {
 
     // Authentication Endpoints
     @POST("api/auth/register")
-    suspend fun registerUser(@Body user: UserEntity): UserEntity
+    suspend fun registerUser(@Body user: UserEntity): UserDto
 
     @POST("api/auth/login")
-    suspend fun loginUser(@Body request: LoginRequest): UserEntity
+    suspend fun loginUser(@Body request: LoginRequest): UserDto
 
     // Profile Endpoints
     @GET("api/users")
-    suspend fun getAllUsers(): List<UserEntity>
+    suspend fun getAllUsers(): List<UserDto>
 
     @GET("api/users/{userId}")
-    suspend fun getUserProfile(@Path("userId") userId: String): UserEntity
+    suspend fun getUserProfile(@Path("userId") userId: String): UserDto
 
     @PUT("api/users/{userId}")
-    suspend fun updateUserProfile(@Path("userId") userId: String, @Body user: UserEntity): UserEntity
+    suspend fun updateUserProfile(@Path("userId") userId: String, @Body user: UserEntity): UserDto
+
 
     // Post Endpoints
     @GET("api/posts")

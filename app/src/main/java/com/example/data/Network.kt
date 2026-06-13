@@ -94,7 +94,7 @@ interface OneEarthApiService {
 
 object ApiClient {
     var authToken: String? = null
-    private var currentUrl = "https://one-earth-dadyagc7bcc9hpcb.eastasia-01.azurewebsites.net/" // Live cloud development backend
+    private var currentUrl = "https://b768-2409-40e3-1ec-5736-dc6b-6c8f-a26-1f95.ngrok-free.app/" // Live cloud development backend
     private var retrofit: Retrofit? = null
     private var itemService: OneEarthApiService? = null
 
@@ -120,19 +120,19 @@ object ApiClient {
             }
 
             val client = OkHttpClient.Builder()
-                .connectTimeout(5, TimeUnit.SECONDS)
-                .readTimeout(8, TimeUnit.SECONDS)
-                .writeTimeout(5, TimeUnit.SECONDS)
+                .connectTimeout(15, TimeUnit.SECONDS)
+                .readTimeout(20, TimeUnit.SECONDS)
+                .writeTimeout(15, TimeUnit.SECONDS)
                 .addInterceptor { chain ->
                     val request = chain.request()
-                    val newRequest = if (!authToken.isNullOrBlank()) {
-                        request.newBuilder()
-                            .header("Authorization", "Bearer $authToken")
-                            .build()
-                    } else {
-                        request
+                    val builder = request.newBuilder()
+                        .header("ngrok-skip-browser-warning", "true")
+                        .header("User-Agent", "AppletNetworkInterceptor")
+                    
+                    if (!authToken.isNullOrBlank()) {
+                        builder.header("Authorization", "Bearer $authToken")
                     }
-                    chain.proceed(newRequest)
+                    chain.proceed(builder.build())
                 }
                 .addInterceptor(logging)
                 .build()

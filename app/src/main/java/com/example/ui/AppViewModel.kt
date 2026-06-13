@@ -351,7 +351,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             _backendBaseUrl.value = ApiClient.getBaseUrl()
             sharedPrefs.edit().putString("backend_url", ApiClient.getBaseUrl()).apply()
         } else {
-            ApiClient.updateBaseUrl("https://one-earth-dadyagc7bcc9hpcb.eastasia-01.azurewebsites.net/")
+            ApiClient.updateBaseUrl("https://b768-2409-40e3-1ec-5736-dc6b-6c8f-a26-1f95.ngrok-free.app/")
             _backendBaseUrl.value = ApiClient.getBaseUrl()
         }
         // Prepopulate database with rich data for demonstration

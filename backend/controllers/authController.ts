@@ -68,21 +68,27 @@ export const registerUser = async (req: Request, res: Response) => {
     const existingDoc = await userDocRef.get();
     
     if (existingDoc.exists) {
-       res.status(200).json(existingDoc.data());
+       const existingData = existingDoc.data() || {};
+       const token = jwt.sign({ userId: email }, JWT_SECRET, { expiresIn: '24h' });
+       res.status(200).json({ ...existingData, token });
        return;
     }
 
     // Also check if any document exists in the collection with this email
     const emailQuery = await db.collection('users').where('email', '==', email).get();
     if (!emailQuery.empty) {
-       res.status(200).json(emailQuery.docs[0].data());
+       const existingData = emailQuery.docs[0].data() || {};
+       const token = jwt.sign({ userId: email }, JWT_SECRET, { expiresIn: '24h' });
+       res.status(200).json({ ...existingData, token });
        return;
     }
 
     // Check username existence
     const usernameQuery = await db.collection('users').where('username', '==', `@${username}`).get();
     if (!usernameQuery.empty) {
-       res.status(200).json(usernameQuery.docs[0].data());
+       const existingData = usernameQuery.docs[0].data() || {};
+       const token = jwt.sign({ userId: existingData.email || email }, JWT_SECRET, { expiresIn: '24h' });
+       res.status(200).json({ ...existingData, token });
        return;
     }
 

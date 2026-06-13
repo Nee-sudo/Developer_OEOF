@@ -578,9 +578,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 // 3. Sync All Users from Cloud to Local Friends List
                 try {
                     val remoteUsers = ApiClient.getService().getAllUsers()
+                    android.util.Log.d("AppDbTrace", "Fetched remoteUsers from network. Size: ${remoteUsers.size}")
                     userDao.deleteAllNonMeUsers()
                     if (remoteUsers.isNotEmpty()) {
+                        var insertedCount = 0
                         remoteUsers.forEach { user ->
+                            android.util.Log.d("AppDbTrace", "Processing user: name=${user.name}, email=${user.email}, username=${user.username}")
                             // Skip local logged-in user profile to prevent self duplicates
                             val matchesMe = me != null && (
                                 user.email.lowercase().trim() == me.email.lowercase().trim() ||
@@ -592,11 +595,17 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                                     id = user.email.lowercase().trim()
                                 )
                                 userDao.insertUser(friendEntity)
+                                insertedCount++
+                                android.util.Log.d("AppDbTrace", "Successfully inserted friend into Room: ${friendEntity.id}")
+                            } else {
+                                android.util.Log.d("AppDbTrace", "Skipped friend insert. MatchesMe=$matchesMe, BlankEmail=${user.email.isBlank()}")
                             }
                         }
+                        android.util.Log.d("AppDbTrace", "Total remote users processed. Inserted: $insertedCount, Ignored: ${remoteUsers.size - insertedCount}")
                     }
                 } catch (userEx: Exception) {
                     android.util.Log.e("AppViewModel", "Sync Users Error: ${userEx.message}", userEx)
+                    android.util.Log.e("AppDbTrace", "Failed to fetch/sync users of One Earth", userEx)
                 }
             } catch (e: Exception) {
                 // Fail-safe

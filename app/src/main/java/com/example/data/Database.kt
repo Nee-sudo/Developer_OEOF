@@ -258,7 +258,7 @@ interface ChatDao {
 
 @Dao
 interface ProfileVisitorDao {
-    @Query("SELECT * FROM profile_visitors ORDER BY timestamp DESC")
+    @Query("SELECT * FROM profile_visitors WHERE hostUserId = 'me' ORDER BY timestamp DESC")
     fun getVisitorsFlow(): Flow<List<ProfileVisitorEntity>>
 
     @Query("SELECT * FROM profile_visitors WHERE hostUserId = :hostUserId AND visitorName = :visitorName LIMIT 1")
